@@ -25,7 +25,7 @@
         cleanupMultipart(processedRequest);
     }
 ```  
-  - 3、获取请求对应的Handler（也就是Controller）,`mappedHandler = getHandler(processedRequest);`  
+  - 3、获取请求对应的Handler（也就是Controller,存放在handlerMappings变量中）,`mappedHandler = getHandler(processedRequest);`  
   - 4、获取顶球对应的HandlerAdapter  
  ```java
     HandlerAdapter ha = getHandlerAdapter(mappedHandler.getHandler());  
@@ -50,7 +50,7 @@
     mappedHandler.applyPostHandle(processedRequest, response, mv);
 ```  
    - 10、处理返回结果，并进行试图渲染等。processDispatchResult。  
-       现在一般直接返回json对象，不再返回view了。  
+     现在一般直接返回json对象，不再返回view了。  
        
 # 3、具体分析第二步中每个步骤的执行过程
    - 1、核心的方法执行过程。（第7步）  
@@ -69,4 +69,43 @@
 				}
         ```    
      - 2、invokeHandlerMethod执行过程 
-        - 1、
+        - 1、生成InitBinder注解的处理对象WebDataBinderFactory。获取Controller里的InitBinder注解方法以及@ControllerAdvice里被InitBinder注释的方法，生成WebDataBinderFactory。  
+        生成SessionAttribute、ModelAttribute注解（包含ControllerAdvice中的ModelAttribute注解）的处理对象SessionAttributesHandler。（存放在sessionAttributesHandlerCache、modelAttributeCache变量中）。  
+        ```java
+         WebDataBinderFactory binderFactory = getDataBinderFactory(handlerMethod);
+         ModelFactory modelFactory = getModelFactory(handlerMethod, binderFactory);
+        ```  
+        - 2、创建invocableMethod，该对象会执行请求体。首先初始化该对象，设置参数解析器、返回值解析器、步骤1中生成的initBinder处理对象WebDataBinderFactory、参数名称转换的parameterNameDiscoverer。   
+        ```java
+       ServletInvocableHandlerMethod invocableMethod = createInvocableHandlerMethod(handlerMethod);
+				if (this.argumentResolvers != null) {
+					invocableMethod.setHandlerMethodArgumentResolvers(this.argumentResolvers);
+				}
+				if (this.returnValueHandlers != null) {
+					invocableMethod.setHandlerMethodReturnValueHandlers(this.returnValueHandlers);
+				}
+				invocableMethod.setDataBinderFactory(binderFactory);
+			 	invocableMethod.setParameterNameDiscoverer(this.parameterNameDiscoverer);
+        ```   
+        参数解析器：请求数据中，请求头、body等有各种各样的数据，这些数据的解析放在参数argumentResolvers（类型HandlerMethodArgumentResolverComposite，在类RequestMappingHandlerAdapter中）中，该参数在spring启动时初始化，见方法RequestMappingHandlerAdapter.getDefaultArgumentResolvers。也可以继承HandlerMethodArgumentResolver自定义一个解析器。   
+        返回值解析器：类似参数解析器，getDefaultReturnValueHandlers，其值均存放在变量returnValueHandlers中，也可以通过继承HandlerMethodReturnValueHandler自定返回值解析器。   
+        - 3、创建ModelAndViewContainer对象，字面意思是Model和View的容器，主要职责是维护model和view，记录HandlerMethodArgumentResolver 和 HandlerMethodReturnValueHandler（参数和返回值解析器）执行handler时，model和view的变化。 
+        ```java
+            ModelAndViewContainer mavContainer = new ModelAndViewContainer();
+            mavContainer.addAllAttributes(RequestContextUtils.getInputFlashMap(request));
+            modelFactory.initModel(webRequest, mavContainer, invocableMethod);
+            mavContainer.setIgnoreDefaultModelOnRedirect(this.ignoreDefaultModelOnRedirect);
+         ```  
+        - 4、处理异步请求。（待续。。）  
+     	- 5、执行请求方法。参数为request和ModelAndViewContainer对象。（待续）
+     		```java
+                invocableMethod.invokeAndHandle(webRequest, mavContainer);
+            ```
+     		- 1、 获取参数
+     		- 2、 执行方法
+     		- 3、 处理返回值	
+     	- 6、返回被请求方法处理过的ModelAndView。  
+     	```java
+          return getModelAndView(mavContainer, modelFactory, webRequest);
+        ```
+     					
